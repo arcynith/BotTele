@@ -55,5 +55,3 @@ Bot Telegram sederhana yang menggunakan **Inline Buttons** untuk navigasi menu y
 
 ---
 
-Dibuat dengan ❤️ untuk kemudahan navigasi bot Telegram.
-
