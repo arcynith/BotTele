@@ -38,7 +38,7 @@ Bot Telegram sederhana yang menggunakan **Inline Buttons** untuk navigasi menu y
    Buat file `.env` di folder utama dan isi dengan token bot Anda:
 
    ```text
-   BOT_TOKEN=8241596141:AAFWs9kunINPWWqWOJu3TUFxClKqt8FeMAk
+   BOT_TOKEN=TOKEN_BOT_ANDA
    ```
 
 5. **Jalankan Bot:**
@@ -56,3 +56,4 @@ Bot Telegram sederhana yang menggunakan **Inline Buttons** untuk navigasi menu y
 ---
 
 Dibuat dengan ❤️ untuk kemudahan navigasi bot Telegram.
+
