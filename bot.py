@@ -1,103 +1,132 @@
 import os
 import logging
-
-from telegram import Update, ReplyKeyboardMarkup
+from dotenv import load_dotenv
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
+    ConversationHandler,
     filters,
 )
 
+# Load environment variables dari file .env
+load_dotenv()
 
-# Logging sederhana supaya kalau ada error bisa langsung terlihat di console.
+# Konfigurasi logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-
-# Token bot dibaca dari environment variable.
-# Di lokal maupun di server (Render, Railway, dll) kita set BOT_TOKEN,
-# sehingga token tidak disimpan langsung di source code.
+# Ambil token dari .env
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-if not BOT_TOKEN:
-    # Kalau token belum di-set, hentikan program dengan pesan yang jelas.
-    raise RuntimeError(
-        "Environment variable BOT_TOKEN belum di-set. "
-        "Lihat bagian konfigurasi di README.md."
-    )
+# Definisi State untuk percakapan
+CHOOSING, GET_USERNAME = range(2)
 
+def get_main_menu_keyboard():
+    """Membuat keyboard menu utama dengan tombol Inline."""
+    keyboard = [
+        [
+            InlineKeyboardButton("1. Diamond", callback_data="Diamond"),
+            InlineKeyboardButton("2. Cash", callback_data="Cash"),
+        ],
+        [
+            InlineKeyboardButton("3. Poin", callback_data="Poin"),
+            InlineKeyboardButton("4. Lokasi", callback_data="Lokasi"),
+        ],
+        [
+            InlineKeyboardButton("🔄 Coba Lagi", callback_data="retry"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Handler untuk perintah /start.
-
-    Mengirim pesan menu utama dan menampilkan keyboard dengan tombol 1, 2, dan 3.
-    """
-    # Satu baris berisi tombol "1", "2", "3"
-    keyboard = [["1", "2", "3"]]
-
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,  # tombol menyesuaikan ukuran layar
-        one_time_keyboard=False,  # keyboard tetap muncul setelah ditekan
-    )
-
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handler /start: Menampilkan menu utama."""
+    reply_markup = get_main_menu_keyboard()
     await update.message.reply_text(
-        "Menu Utama - Pilih tombol di bawah",
+        "Halo Bang! Selamat datang.\nSilakan pilih layanan di bawah ini:",
         reply_markup=reply_markup,
     )
+    return CHOOSING
 
-
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Handler untuk semua pesan teks biasa (bukan command).
-
-    Mengecek tombol mana yang ditekan dan mengirim balasan yang sesuai.
-    """
-    if not update.message:
-        # Untuk berjaga-jaga jika update tidak berisi message.
-        logger.warning("Menerima update tanpa message.")
-        return
-
-    text = update.message.text
-
-    if text == "1":
-        await update.message.reply_text("Anda menekan tombol 1")
-    elif text == "2":
-        await update.message.reply_text("Anda menekan tombol 2")
-    elif text == "3":
-        await update.message.reply_text("Anda menekan tombol 3")
-    else:
-        await update.message.reply_text(
-            "Silakan pilih salah satu tombol di keyboard: 1, 2, atau 3."
+async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menangani klik pada tombol Inline."""
+    query = update.callback_query
+    await query.answer()
+    
+    choice_data = query.data
+    
+    if choice_data == "retry":
+        # Reset menu jika tombol 'Coba Lagi' ditekan
+        await query.edit_message_text(
+            text="Menu sudah di-reset bg. Silakan pilih layanan lagi:",
+            reply_markup=get_main_menu_keyboard()
         )
+        return CHOOSING
+    
+    # Simpan pilihan layanan dan minta username
+    context.user_data["menu_choice"] = choice_data
+    await query.edit_message_text(
+        text=f"Oit! Kamu pilih *{choice_data}*.\n\nSekarang, silakan ketik *usernamenya* bg:",
+        parse_mode="Markdown"
+    )
+    return GET_USERNAME
 
+async def handle_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menangani input username dan menampilkan konfirmasi + menu lagi."""
+    username = update.message.text
+    choice_name = context.user_data.get("menu_choice", "Layanan")
+
+    reply_markup = get_main_menu_keyboard()
+    await update.message.reply_text(
+        f"Sipp mantap bg!\n\n"
+        f"Layanan: *{choice_name}*\n"
+        f"Username: *{username}*\n\n"
+        f"Pesanan kamu lagi diproses ya.\n"
+        "Ada lagi yang mau dibantu?",
+        parse_mode="Markdown",
+        reply_markup=reply_markup,
+    )
+    return CHOOSING
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Membatalkan sesi."""
+    await update.message.reply_text("Siap bg, kalau butuh lagi ketik /start ya!", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
 
 def main() -> None:
-    """
-    Entry point program.
+    if not BOT_TOKEN or BOT_TOKEN == "TOKEN_BOT_ANDA_DI_SINI":
+        print("ERROR: BOT_TOKEN salah atau belum diisi di file .env!")
+        return
 
-    Membangun Application, mendaftarkan handler,
-    lalu menjalankan bot dengan metode polling.
-    """
+    # Bangun aplikasi
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # /start → handler start()
-    application.add_handler(CommandHandler("start", start))
-
-    # Semua teks biasa → handler handle_button()
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button)
+    # Conversation Handler buat alur: Start -> Pilih Menu -> Input Username
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            CHOOSING: [
+                CallbackQueryHandler(handle_button_click)
+            ],
+            GET_USERNAME: [
+                MessageHandler(filters.TEXT & ~(filters.COMMAND), handle_username),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True
     )
 
-    print("Bot sedang berjalan... Tekan Ctrl+C untuk menghentikan.")
-    application.run_polling()
+    application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("start", start))
 
+    print("Bot sudah kembali normal bg... Tekan Ctrl+C buat berhenti.")
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
